@@ -175,7 +175,7 @@ type GenesisVM interface {
 func MakeGenesisFunc(opts ...GenOption) GenesisInitFunc {
 	return func(cst cbor.IpldStore, bs blockstore.Blockstore) (*block.Block, error) {
 		ctx := context.Background()
-		st := state.NewTree(cst)
+		st := state.NewState(cst)
 		store := vm.NewStorage(bs)
 		vm := vm.NewVM(st, &store).(GenesisVM)
 		rnd := crypto.GenesisRandomnessSource{}
@@ -221,9 +221,12 @@ func MakeGenesisFunc(opts ...GenOption) GenesisInitFunc {
 			}
 		}
 		for addr, nonce := range genCfg.nonces {
-			a, err := st.GetActor(ctx, addr)
+			a, found, err := st.GetActor(ctx, addr)
 			if err != nil {
 				return nil, err
+			}
+			if !found {
+				panic("unreachable: actor not found")
 			}
 			a.CallSeqNum = nonce
 			if err := st.SetActor(ctx, addr, a); err != nil {
@@ -241,7 +244,7 @@ func MakeGenesisFunc(opts ...GenOption) GenesisInitFunc {
 			return nil, err
 		}
 
-		c, err := st.Flush(ctx)
+		root, err := st.Commit(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -259,7 +262,7 @@ func MakeGenesisFunc(opts ...GenOption) GenesisInitFunc {
 		}
 
 		genesis := &block.Block{
-			StateRoot:       e.NewCid(c),
+			StateRoot:       e.NewCid(root),
 			Messages:        e.NewCid(emptyMetaCid),
 			MessageReceipts: e.NewCid(emptyAMTCid),
 			BLSAggregateSig: crypto.Signature{
@@ -279,7 +282,7 @@ func MakeGenesisFunc(opts ...GenOption) GenesisInitFunc {
 }
 
 // SetupDefaultActors inits the builtin actors that are required to run filecoin.
-func SetupDefaultActors(ctx context.Context, vm GenesisVM, store *vm.Storage, st state.Tree, storeType types.ProofsMode, network string) error {
+func SetupDefaultActors(ctx context.Context, vm GenesisVM, store *vm.Storage, st *state.State, storeType types.ProofsMode, network string) error {
 	createActor := func(addr address.Address, codeCid cid.Cid, balance abi.TokenAmount, stateFn func() (interface{}, error)) *actor.Actor {
 
 		a := actor.Actor{
