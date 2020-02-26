@@ -172,6 +172,9 @@ func (w *ValidationVMWrapper) CreateActor(code cid.Cid, addr address.Address, ba
 			return nil, address.Undef, err
 		}
 		initActorEntry.Head = enccid.NewCid(initHead)
+		if err := w.vm.state.SetActor(w.vm.context, builtin.InitActorAddr, initActorEntry); err != nil {
+			return nil, address.Undef, err
+		}
 		// persist state below
 	}
 
@@ -222,6 +225,10 @@ func (w *ValidationVMWrapper) SetActorState(addr address.Address, balance big.In
 	// update fields
 	a.Head = enccid.NewCid(head)
 	a.Balance = balance
+
+	if err := w.vm.state.SetActor(w.vm.context, idAddr, a); err != nil {
+		return nil, err
+	}
 
 	if err := w.PersistChanges(); err != nil {
 		return nil, err
